@@ -1,0 +1,5 @@
+url,https,Content-Security-Policy,Strict-Transport-Security,X-Content-Type-Options,X-Frame-Options,Referrer-Policy,server_info,open_directory,robots_txt,risk_level
+https://google.com,True,gws,False,True,False,True,False,False,True,Good
+https://github.com/,True,github.com,True,True,True,True,True,False,True,Good
+https://google.com,True,gws,False,False,False,True,False,False,True,Good
+https://google.com,True,gws,False,False,False,True,False,False,True,Good
