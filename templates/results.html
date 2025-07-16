@@ -4,33 +4,32 @@
     <title>Scan Results</title>
 </head>
 <body>
-    <h2>Scan Results</h2>
-
-    <form method="POST" action="/download">
-        {% for site in results %}
-            <h3>{{ site.url }}</h3>
-            <input type="hidden" name="url" value="{{ site.url }}">
-            {% if site.error %}
-                <p style="color: red;">Error: {{ site.error }}</p>
-            {% else %}
-                <ul>
-                    <li><strong>HTTPS:</strong> {{ '✅' if site.https else '❌' }}</li>
-                    <li><strong>Server Info:</strong> {{ site.server_info }}</li>
-                    <li><strong>Open Directory:</strong> {{ '⚠️' if site.open_directory else '✅' }}</li>
-                    <li><strong>robots.txt Found:</strong> {{ '✅' if site.robots_txt else '❌' }}</li>
-                    {% for header in ['Content-Security-Policy', 'Strict-Transport-Security', 'X-Content-Type-Options', 'X-Frame-Options', 'Referrer-Policy'] %}
-                        <li><strong>{{ header }}:</strong> {{ '✅' if site[header] else '❌' }}</li>
-                    {% endfor %}
-                    <li><strong>Security Summary:</strong> {{ site.risk_level }}</li>
-                </ul>
-            {% endif %}
-            <hr>
-        {% endfor %}
-        <button type="submit">Download Results as CSV</button>
-    </form>
-
+    <h1>Scan Results</h1>
+    <table border="1" cellpadding="5" cellspacing="0">
+        <thead>
+            <tr>
+                <th>URL</th>
+                <th>Reachable</th>
+                <th>HTTPS</th>
+                <th>Server</th>
+                <th>robots.txt Found</th>
+                <th>Error</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for result in results %}
+            <tr>
+                <td>{{ result.url }}</td>
+                <td>{{ "✅" if result.reachable else "❌" }}</td>
+                <td>{{ "✅" if result.https else "❌" }}</td>
+                <td>{{ result.server }}</td>
+                <td>{{ "✅" if result.robots_txt else "❌" }}</td>
+                <td>{{ result.error if result.error else "" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <br>
     <a href="/">Back to Home</a>
 </body>
 </html>
-
-

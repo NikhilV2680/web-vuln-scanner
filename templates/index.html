@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Website Vulnerability Scanner</title>
+    <title>Simple Scanner</title>
 </head>
 <body>
-    <h2>Enter one or more URLs (one per line)</h2>
-    <form method="POST" action="/scan">
-        <textarea name="urls" rows="10" cols="60" placeholder="https://example.com"></textarea><br><br>
-        <button type="submit">Scan Websites</button>
+    <h1>Enter URLs to Scan</h1>
+    <form action="/scan" method="post">
+        <textarea name="urls" rows="10" cols="50" placeholder="Enter one URL per line"></textarea><br><br>
+        <button type="submit">Scan</button>
     </form>
 </body>
 </html>

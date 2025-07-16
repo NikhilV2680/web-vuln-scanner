@@ -1,126 +1,114 @@
-from flask import Flask, render_template, request, redirect, send_file
+from flask import Flask, render_template, request, make_response
 import requests
 from urllib.parse import urlparse
-import csv
-import os
 
 app = Flask(__name__)
-SCAN_HISTORY_FILE = "history.csv"
-
-# These are the security headers we want to check for in the responses
-RECOMMENDED_HEADERS = [
-    "Content-Security-Policy",
-    "Strict-Transport-Security",
-    "X-Content-Type-Options",
-    "X-Frame-Options",
-    "Referrer-Policy"
-]
 
 @app.route('/')
 def home():
-    # Serve the main page with the form
+    # Show the main page with the URL input form
     return render_template('index.html')
 
 @app.route('/scan', methods=['POST'])
 def scan():
-    # Get URLs entered by the user (multiple URLs allowed, one per line)
+    # Get the URLs entered by the user (one per line)
     urls = request.form.get('urls', '')
-    url_list = [url.strip() for url in urls.splitlines() if url.strip()]
+    url_list = [u.strip() for u in urls.splitlines() if u.strip()]  # Clean empty lines
+    results = []
 
-    all_results = []
-    headers_for_request = {
-        # Mimic a browser user-agent to avoid some blocking
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                      "AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/115.0 Safari/537.36"
-    }
+    headers = {"User-Agent": "Mozilla/5.0"}  # Pretend to be a browser
 
     for url in url_list:
-        result = {"url": url}
+        data = {"url": url}  # Store info about each URL here
         try:
-            # Try to make a GET request to the URL with a timeout
-            res = requests.get(url, headers=headers_for_request, timeout=5, allow_redirects=True)
-            headers = res.headers
+            # Make the GET request to the URL, follow redirects, with a timeout
+            response = requests.get(url, headers=headers, timeout=5, allow_redirects=True)
+            parsed = urlparse(response.url)  # Parse the final URL after redirects
 
-            # Check if the final URL after redirects uses HTTPS
-            final_url = res.url
-            parsed_final = urlparse(final_url)
-            result['https'] = parsed_final.scheme == 'https'
+            data['reachable'] = True  # We got a response, so URL is reachable
+            data['https'] = parsed.scheme == 'https'  # Check if HTTPS is used
+            data['server'] = response.headers.get('Server', 'Unknown')  # Server info header
 
-            # See which recommended headers are present in the response
-            present_headers = [header for header in RECOMMENDED_HEADERS if header in headers]
-            server_info = headers.get("Server", "").lower()
-            result["server_info"] = headers.get("Server", "Not Present")
-
-            # Mark each recommended header as True/False in the results
-            result.update({header: (header in headers) for header in RECOMMENDED_HEADERS})
-
-            # Check if "Index of /" is in the page content (possible open directory listing)
-            result["open_directory"] = "Index of /" in res.text
-
-            # Check if robots.txt exists on the site
-            robots_url = f"{parsed_final.scheme}://{parsed_final.netloc}/robots.txt"
-            robots_res = requests.get(robots_url, headers=headers_for_request, timeout=3)
-            result["robots_txt"] = robots_res.status_code == 200
-
-            # Simple risk scoring based on HTTPS and headers
-            if not result['https']:
-                result['risk_level'] = "High Risk"
-            elif any(x in server_info for x in ["gws", "googlefrontend", "google frontends"]):
-                result['risk_level'] = "Good"
-            elif len(present_headers) < 3:
-                result['risk_level'] = "High Risk"
-            else:
-                result['risk_level'] = "Good"
+            # Now check if robots.txt exists for this domain
+            robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+            try:
+                r = requests.get(robots_url, headers=headers, timeout=3)
+                data['robots_txt'] = r.status_code == 200  # Found if status 200
+            except:
+                data['robots_txt'] = False  # Could not reach robots.txt
 
         except Exception as e:
-            # In case of any error, set default/failure values and log the error message
-            result['error'] = str(e)
-            for header in RECOMMENDED_HEADERS:
-                result[header] = False
-            result["server_info"] = "Unknown"
-            result["open_directory"] = False
-            result["robots_txt"] = False
-            result["risk_level"] = "Error"
+            # Something went wrong (timeout, connection error, etc)
+            data['reachable'] = False
+            data['https'] = False
+            data['server'] = 'Unknown'
+            data['robots_txt'] = False
+            data['error'] = str(e)  # Save error message to show later
 
-        all_results.append(result)
+        results.append(data)  # Add this URL’s data to results list
 
-    # Save results to CSV history file
-    save_to_history(all_results)
+    # Show results page with all URLs scanned
+    return render_template('results.html', results=results)
 
-    # Render the results page with the scan data
-    return render_template('results.html', results=all_results)
-
-@app.route('/download', methods=['POST'])
+@app.route('/download_csv', methods=['POST'])
 def download_csv():
-    # Allow user to download CSV file with selected URLs from history
-    urls = request.form.getlist('url')
-    if not urls:
-        return redirect('/')
+    # Get URLs again from textarea for CSV download
+    urls = request.form.get('urls', '')
+    url_list = [u.strip() for u in urls.splitlines() if u.strip()]
+    headers = {"User-Agent": "Mozilla/5.0"}
 
-    with open(SCAN_HISTORY_FILE, newline='', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        rows = [row for row in reader if row['url'] in urls]
+    results = []
+    for url in url_list:
+        data = {"url": url}
+        try:
+            # Same scan logic as above to get fresh data for CSV
+            response = requests.get(url, headers=headers, timeout=5, allow_redirects=True)
+            parsed = urlparse(response.url)
 
-    output_file = 'scan_results.csv'
-    with open(output_file, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
-        writer.writeheader()
-        writer.writerows(rows)
+            data['reachable'] = True
+            data['https'] = parsed.scheme == 'https'
+            data['server'] = response.headers.get('Server', 'Unknown')
 
-    # Send the CSV file as a downloadable attachment to the user
-    return send_file(output_file, as_attachment=True)
+            robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+            try:
+                r = requests.get(robots_url, headers=headers, timeout=3)
+                data['robots_txt'] = r.status_code == 200
+            except:
+                data['robots_txt'] = False
 
-def save_to_history(results):
-    # Append new scan results to the history CSV file
-    file_exists = os.path.exists(SCAN_HISTORY_FILE)
-    with open(SCAN_HISTORY_FILE, 'a', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=results[0].keys())
-        if not file_exists:
-            # Write header only if file is new
-            writer.writeheader()
-        writer.writerows(results)
+        except Exception as e:
+            data['reachable'] = False
+            data['https'] = False
+            data['server'] = 'Unknown'
+            data['robots_txt'] = False
+            data['error'] = str(e)
+
+        results.append(data)
+
+    # Prepare CSV content as a string
+    fieldnames = ['url', 'reachable', 'https', 'server', 'robots_txt', 'error']
+    output = []
+    output.append(",".join(fieldnames))  # CSV header
+
+    for res in results:
+        row = []
+        for field in fieldnames:
+            val = res.get(field, "")
+            # Convert booleans to Yes/No for readability
+            if isinstance(val, bool):
+                val = "Yes" if val else "No"
+            row.append(str(val))
+        output.append(",".join(row))
+
+    csv_data = "\n".join(output)
+
+    # Send CSV back to user as a downloadable file
+    response = make_response(csv_data)
+    response.headers['Content-Disposition'] = 'attachment; filename=scan_results.csv'
+    response.headers['Content-Type'] = 'text/csv'
+    return response
+
 
 if __name__ == '__main__':
-    # Run Flask app on port 8000 with debug mode on for easier troubleshooting
+    # Start the Flask development server on port 8000 with debug enabled
     app.run(debug=True, port=8000)
